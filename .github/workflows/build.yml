@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup project
+        uses: actions/checkout@v4
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          ruby-version: 3.2
+      - name: Lint ruby
+        run: bundle exec rubocop
+
+  test:
+    name: Test (ruby ${{ matrix.ruby_version }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup project
+        uses: actions/checkout@v4
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          ruby-version: ${{ matrix.ruby_version }}
+      - name: Run RSpec
+        run: bin/test/unit
+    strategy:
+      matrix:
+        ruby_version:
+          - 3.2
+          - 3.3
+          - 3.4
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup project
+        uses: actions/checkout@v4
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          ruby-version: 3.2
+      - name: Package gem
+        run: bin/build

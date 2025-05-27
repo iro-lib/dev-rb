@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+#MISE description="Run all unit tests"
+# frozen_string_literal: true
+
+require 'yaml'
+
+gems = YAML.load_file(File.join(Dir.pwd, 'iro-gems.yml'))
+
+(gems || {}).each_value do |config|
+  Dir.chdir(config['path']) { system('bundle exec rspec') }
+end

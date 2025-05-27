@@ -1,0 +1,635 @@
+#!/usr/bin/env ruby
+#MISE description="Generate a new Iro gem"
+#MISE alias="g:gem"
+# frozen_string_literal: true
+
+require 'date'
+require 'erb'
+require 'fileutils'
+require 'optparse'
+require 'yaml'
+
+MAIN_GEM_CONFIG = File.join(Dir.pwd, 'iro-gems.yml')
+ALL_GEMS = YAML.load_file(MAIN_GEM_CONFIG) || {}
+
+USAGE = <<~USAGE
+  Usage: bin/generate/gem [GEM_NAME] [options]
+  Usage with mise: mise run generate:gem [GEM_NAME] [options]
+USAGE
+
+def create_yaml(data)
+  data.empty? ? '' : data.to_yaml.delete_prefix("---\n").gsub('- ', '  - ')
+end
+
+options = {
+  dependencies: [],
+  enhance_root: false,
+}
+
+OptionParser.new do |opts|
+  opts.banner = <<~BANNER
+    Generate a new Iro gem
+
+    #{USAGE}
+  BANNER
+
+  opts.on '-d <DEPENDENCY>', '--dependency <DEPENDENCY>', String, 'Add a Iro dependency' do |dependency|
+    options[:dependencies] << dependency
+  end
+
+  opts.on '--enhance-root', 'Specify this gem enhances the root Iro module' do
+    options[:enhance_root] = true
+  end
+
+  opts.on '--path <PATH>', String, 'Override the default local path for the gem' do |path|
+    options[:path] = path
+  end
+
+  opts.on '--name <NAME>', String, 'Specify the name of the gem' do |name|
+    options[:name] = name
+  end
+
+  opts.on '--repo <REPO>', String, 'Override the default repository for the gem' do |repo|
+    options[:repo] = repo
+  end
+end.parse!
+
+# ==============================================================================
+# Preprocess the options
+# ==============================================================================
+
+options[:name] ||= ARGV[0] unless ARGV[0]&.start_with?('-')
+
+unless options[:name]
+  warn "You must specify a gem name\n\n#{USAGE}\n"
+  exit 1
+end
+
+options[:dependencies] = options[:dependencies].compact.uniq.sort
+options[:name] = "iro-#{options[:name].delete_prefix('iro-')}" # ensure the name starts with iro-
+options[:path] ||= "#{options[:name]}-rb"
+options[:repo] ||= "git@github.com:iro-lib/#{options[:path]}.git"
+options[:constant_name] = options[:name].split('-').map do |segment|
+  segment.split('_').map(&:capitalize).join
+end.join('::')
+options[:extension_name] = options[:name].delete_prefix('iro-')
+
+# ==============================================================================
+# Resolve the dependencies for the new gem
+# ==============================================================================
+
+options[:direct_dependencies] = options[:dependencies].each_with_object({}) do |dependency, result|
+  config = ALL_GEMS[dependency]
+  result[dependency] = { 'path' => "../#{config['path']}", 'repo' => config['repo'] }
+end.sort.to_h
+
+options[:all_dependencies] = options[:dependencies].each_with_object({}) do |dependency, result|
+  main_config = ALL_GEMS[dependency]
+  result[dependency] = { 'path' => "../#{main_config['path']}", 'repo' => main_config['repo'] }
+
+  gem_config_file = File.join(Dir.pwd, main_config['path'], 'iro-gems.yml')
+  gem_config = YAML.load_file(gem_config_file) if File.exist?(gem_config_file)
+  (gem_config || {}).each_pair do |gem_name, config|
+    result[gem_name] = { 'path' => "../#{config['path'].delete_prefix('../')}", 'repo' => config['repo'] }
+  end
+end.sort.to_h
+
+# ==============================================================================
+# General setup
+# ==============================================================================
+
+files = {}
+
+# ==============================================================================
+# Create the .github files for the new gem
+# ==============================================================================
+
+files['.github/dependabot.yml'] = <<~YAML
+  version: 2
+  updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+        interval: weekly
+        day: monday
+      labels:
+        - dependabot
+        - dependencies
+YAML
+
+files['.github/workflows/build.yml'] = <<~YAML
+  name: Build
+
+  on:
+    push:
+      branches:
+        - main
+    pull_request:
+      branches:
+        - main
+
+  jobs:
+
+    lint:
+      name: Lint
+      runs-on: ubuntu-latest
+      steps:
+        - name: Setup project
+          uses: actions/checkout@v4
+        - name: Setup ruby
+          uses: ruby/setup-ruby@v1
+          with:
+            bundler-cache: true
+            ruby-version: 3.2
+        - name: Lint ruby
+          run: bundle exec rubocop
+
+    test:
+      name: Test (ruby ${{ matrix.ruby_version }})
+      env:
+        CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+      runs-on: ubuntu-latest
+      steps:
+        - name: Setup project
+          uses: actions/checkout@v4
+        - name: Setup ruby
+          uses: ruby/setup-ruby@v1
+          with:
+            bundler-cache: true
+            ruby-version: ${{ matrix.ruby_version }}
+        - name: Run RSpec
+          run: bundle exec rspec
+        - name: Report Coverage
+          if: env.CODACY_PROJECT_TOKEN != ''
+          shell: bash
+          run: bash <(curl -Ls https://coverage.codacy.com/get.sh)
+      strategy:
+        matrix:
+          ruby_version:
+            - 3.2
+            - 3.3
+            - 3.4
+
+    package:
+      name: Package
+      runs-on: ubuntu-latest
+      steps:
+        - name: Setup project
+          uses: actions/checkout@v4
+        - name: Setup ruby
+          uses: ruby/setup-ruby@v1
+          with:
+            bundler-cache: true
+            ruby-version: 3.2
+        - name: Package gem
+          run: bin/build
+YAML
+
+# ==============================================================================
+# Create the bin files for the new gem
+# ==============================================================================
+
+files['bin/generate/signatures'] = <<~RUBY
+  #!/usr/bin/env ruby
+  #MISE description="Generate and check type signatures"
+  #MISE alias="g:sig"
+  # frozen_string_literal: true
+
+  system 'rbs-inline lib --opt-out --output=./sig'
+
+  module SignatureCleaner
+    GENERATED_LINE = /^\s*# Generated from .+.rb with RBS::Inline\s*$/
+    RBS_COMMENT    = /^\s*#\s*@rbs.*$/
+
+    class << self
+      def clean!
+        Dir.glob('sig/**/*.rbs').each do |file|
+          contents = File.read(file)
+
+          new_contents = contents
+                         .lines
+                         .reject { |line| GENERATED_LINE.match?(line) || RBS_COMMENT.match?(line) }
+                         .join
+                         .strip
+
+          if new_contents.empty?
+            File.delete(file)
+          else
+            File.write(file, new_contents + "\n")
+          end
+        end
+      end
+    end
+  end
+
+  SignatureCleaner.clean!
+RUBY
+
+files['bin/lint/ruby'] = <<~SH
+  #!/usr/bin/env sh
+  #MISE description="Lint ruby code"
+  #MISE alias=["lint:rb", "l:rb"]
+
+  bundle exec rubocop $@
+SH
+
+files['bin/lint/types'] = <<~SH
+  #!/usr/bin/env sh
+  #MISE description="Lint ruby types with Steep"
+  #MISE alias=["l:t"]
+
+  bundle exec steep check --severity error
+SH
+
+files['bin/build'] = <<~SH
+  #!/usr/bin/env sh
+  #MISE description="Build <%= name %>"
+  #MISE alias="b"
+
+  set -e
+
+  gem build -V <%= name %>.gemspec
+  mkdir -p pkg
+  mv *.gem pkg/
+SH
+
+files['bin/clean'] = <<~SH
+  #!/usr/bin/env sh
+  #MISE description="Clean out coverage and doc files"
+  #MISE alias="cln"
+
+  rm -rf .yardoc
+  rm -rf coverage
+  rm -rf doc
+SH
+
+files['bin/console'] = <<~RUBY
+  #!/usr/bin/env ruby
+  #MISE description="Start an irb console"
+  #MISE alias="con"
+  # frozen_string_literal: true
+
+  require 'bundler/setup'
+  require '<%= name %>'
+
+  require 'irb'
+  IRB.start(__FILE__)
+RUBY
+
+files['bin/setup'] = <<~SH
+  #!/usr/bin/env sh
+  #MISE description="Setup the development environment"
+  #MISE alias="su"
+
+  set -euo pipefail
+  IFS=$'\n\t'
+  set -vx
+
+  # Install dependencies
+  bundle install
+SH
+
+# ==============================================================================
+# Create the lib files for the new gem
+# ==============================================================================
+
+files["lib/#{options[:name]}.rb"] = <<~RUBY
+  # frozen_string_literal: true
+
+  <% direct_dependencies.each_key do |dependency| %>require '<%= dependency %>'
+  <% end %>
+
+  root_path = File.dirname(__FILE__)
+
+  Iro.plug('<%= name %>', root_path) do
+    # TODO: add your plugin logic here
+  end
+
+  <% if enhance_root %>require_relative 'iro'<% end %>
+
+RUBY
+
+files["lib/iro/#{options[:extension_name]}.rb"] = <<~RUBY
+  # frozen_string_literal: true
+
+  module Iro
+    module <%= constant_name.delete_prefix('Iro::') %>
+    end
+  end
+
+RUBY
+
+if options[:enhance_root]
+  files['lib/iro.rb'] = <<~RUBY
+    # frozen_string_literal: true
+
+    module Iro
+      # TODO: Enhance the Iro module
+    end
+
+  RUBY
+end
+
+# ==============================================================================
+# Create the sig files for the new gem
+# ==============================================================================
+
+files['sig/manifest.yaml'] = <<~YAML
+  dependencies: []
+YAML
+
+# ==============================================================================
+# Create the spec files for the new gem
+# ==============================================================================
+
+files['spec/spec_helper.rb'] = <<~RUBY
+  # frozen_string_literal: true
+
+  require 'simplecov'
+  require 'simplecov-lcov'
+
+  SimpleCov.start do
+    enable_coverage :branch
+    formatter SimpleCov::Formatter::MultiFormatter.new(
+      [SimpleCov::Formatter::LcovFormatter, SimpleCov::Formatter::HTMLFormatter],
+    )
+    add_filter 'spec'
+    track_files 'lib/**/*.rb'
+  end
+
+  require 'rspec'
+  require '<%= name %>'
+
+  Dir.glob(File.expand_path('support/**/*.rb', File.dirname(__FILE__))).each { |file| require file }
+
+  RSpec.configure do |config|
+    config.example_status_persistence_file_path = 'logs/rspec_status'
+    config.disable_monkey_patching!
+    config.expect_with(:rspec) { |c| c.syntax = :expect }
+    config.order = :random
+    Kernel.srand config.seed
+  end
+RUBY
+
+files["spec/iro/#{options[:extension_name]}_spec.rb"] = <<~RUBY
+  # frozen_string_literal: true
+
+  RSpec.describe <%= constant_name %> do
+    pending "add some examples to (or delete) \#{__FILE__}"
+  end
+
+RUBY
+
+# ==============================================================================
+# Create the root files for the new gem
+# ==============================================================================
+
+files['.gitignore'] = <<~GITIGNORE
+  *.gem
+  *.rbc
+  /.config
+  /coverage/
+  /InstalledFiles
+  /logs/
+  /pkg/
+  /spec/reports/
+  /spec/examples.txt
+  /test/tmp/
+  /test/version_tmp/
+  /tmp/
+
+  # Used by dotenv library to load environment variables.
+  # .env
+
+  # Ignore Byebug command history file.
+  .byebug_history
+
+  ## Documentation cache and generated files:
+  /.yardoc/
+  /_yardoc/
+  /doc/
+  /rdoc/
+
+  ## Environment normalization:
+  /.bundle/
+  /vendor/bundle
+  /lib/bundler/man/
+
+  # for a library or gem, you might want to ignore these files since the code is
+  # intended to run in multiple environments; otherwise, check them in:
+  Gemfile.lock
+  # .ruby-version
+  # .ruby-gemset
+
+  # unless supporting rvm < 1.11.0 or doing something fancy, ignore this:
+  .rvmrc
+
+  # Used by RuboCop. Remote config files pulled in from inherit_from directive.
+  .rubocop-https?--*
+GITIGNORE
+
+files['.rspec'] = <<~RC
+  --require spec_helper
+  --format documentation
+  --order rand
+  --color
+RC
+
+files['.rubocop.yml'] = <<~YAML
+  inherit_from:
+    # TODO: change this to a remote url
+    - ../.rubocop.yml
+
+  Naming/FileName:
+    Exclude:
+      - lib/<%= name %>.rb
+YAML
+
+files['.ruby-version'] = <<~RUBY_VERSION
+  3.2.8
+RUBY_VERSION
+
+files['.yardopts'] = <<~YARDOPTS
+  lib/**/*.rb
+  --title <%= constant_name %>
+  --readme README.md
+  --no-private
+  --protected
+  --markup markdown
+  --markup-provider redcarpet
+  --embed-mixins
+  --tag rbs:"Signature"
+  --hide-tag rbs
+  --files LICENSE
+YARDOPTS
+
+files['Gemfile'] = <<~GEMFILE
+  # frozen_string_literal: true
+
+  require 'yaml'
+
+  source 'https://rubygems.org'
+  gemspec
+
+  ruby '~> 3.2'
+
+  group :iro do
+    YAML.load_file(File.expand_path('iro-gems.yml', File.dirname(__FILE__)))&.each_pair do |gem_name, config|
+      gem gem_name, path: config['path'] if Dir.exist?(config['path'])
+    end
+  end
+
+  group :doc do
+    gem 'github-markup', require: false
+    gem 'redcarpet', require: false
+    gem 'webrick', require: false
+    gem 'yard', require: false
+    gem 'yard-sitemap', require: false
+  end
+
+  group :lint do
+    gem 'rubocop', require: false
+    gem 'rubocop-ordered_methods', require: false
+    gem 'rubocop-performance', require: false
+    gem 'rubocop-rspec', require: false
+    gem 'rubocop-thread_safety', require: false
+    gem 'rubocop-yard', require: false
+  end
+
+  group :signatures do
+    gem 'rbs', require: false
+    gem 'rbs-inline', require: false
+    gem 'steep', require: false
+  end
+
+  group :test do
+    gem 'rspec', require: false
+    gem 'simplecov', require: false
+    gem 'simplecov-lcov', require: false
+  end
+GEMFILE
+
+files["#{options[:name]}.gemspec"] = <<~GEMSPEC
+  # frozen_string_literal: true
+
+  Gem::Specification.new do |spec|
+    gem_version = '0.1.0'
+    semver      = '0.1.0'
+    repo_url    = 'https://github.com/iro-lib/<%= path %>'
+    home_url    = 'https://iro-lib.com'
+
+    spec.name        = '<%= name %>'
+    spec.version     = gem_version
+    spec.homepage    = home_url
+    spec.authors     = ['Aaron Allen']
+    spec.email       = ['hello@aaronmallen.me']
+    # TODO: Add a summary and a description for the gem
+    spec.summary     = '<%= name %>'
+    spec.description = '<%= name %> description'
+
+    spec.license = 'MIT'
+
+    spec.required_ruby_version = '>= 3.2'
+
+    spec.files = Dir.chdir(__dir__) do
+      Dir['lib/**/*', '.yardopts', 'LICENSE', 'README.md'].reject { |f| File.directory?(f) }
+    end
+
+    spec.require_paths = ['lib']
+
+    spec.metadata = {
+      'bug_tracker_uri' => "\#{repo_url}/issues",
+      'changelog_uri' => "\#{repo_url}/releases/tag/\#{semver}",
+      'homepage_uri' => spec.homepage,
+      'rubygems_mfa_required' => 'true',
+      'source_code_uri' => "\#{repo_url}/tree/\#{semver}",
+    }
+    <% direct_dependencies.each_key do |dependency| %>
+    spec.add_dependency '<%= dependency %>',<%= ' ' * ((direct_dependencies.keys.map(&:length).max + 1) - dependency.length) %>'~> 0.1'<% end %>
+  end
+GEMSPEC
+
+files['iro-gems.yml'] = create_yaml(options[:all_dependencies]).delete('"').freeze
+
+files['LICENSE'] = <<~LICENSE
+  The MIT License (MIT)
+
+  Copyright (c) <%= DateTime.now.year %> Aaron Allen
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
+LICENSE
+
+files['mise.toml'] = <<~MISE_TOML
+  [task_config]
+  includes = ["bin"]
+
+  [tools]
+  ruby = "3.2"
+
+  [tasks."lint:ruby"]
+  alias = ["lint:rb"]
+  description = "Lint ruby files"
+  run = "bundle exec rubocop"
+
+  [tasks.test]
+  description = "Run the unit tests"
+  run = "bundle exec rspec"
+MISE_TOML
+
+files['README.md'] = <<~MARKDOWN
+  # <%= constant_name %>
+
+MARKDOWN
+
+files['Steepfile'] = <<~RUBY
+  # frozen_string_literal: true
+
+  target :lib do
+    signature 'sig'
+    check 'lib'
+  end
+RUBY
+
+# ==============================================================================
+# Generate all the files and setup the gem
+# ==============================================================================
+
+files.each_pair do |path, content|
+  FileUtils.mkdir_p(File.join(options[:path], File.dirname(path)))
+  File.write(File.join(options[:path], path), ERB.new(content).result_with_hash(options))
+end
+
+FileUtils.chmod_R('+x', File.join(options[:path], 'bin'))
+
+Dir.chdir(options[:path]) do
+  system('mise trust') if system('command -v mise >/dev/null 2>&1')
+  system('bin/setup')
+  system('bundle exec rubocop --stop-server')
+  system('bundle exec rubocop -A')
+  system('bin/generate/signatures')
+end
+
+# ==============================================================================
+# Update the main gem config
+# ==============================================================================
+
+new_all_gems = ALL_GEMS.merge(options[:name].to_s => { 'path' => options[:path], 'repo' => options[:repo] }).sort.to_h
+File.write(MAIN_GEM_CONFIG, create_yaml(new_all_gems))
+
+system('bundle update')

@@ -1,0 +1,76 @@
+#!/usr/bin/env ruby
+#MISE description="Start an irb console"
+#MISE alias="con"
+# frozen_string_literal: true
+
+require 'bundler/setup'
+require 'optparse'
+require 'yaml'
+
+config = YAML.load_file(File.join(Dir.pwd, 'iro-gems.yml'))
+
+if config && !config.empty?
+  gems = config.keys
+  gems_cleared = false
+
+  options = {
+    gems: gems.dup,
+    log_level: :debug,
+  }
+
+  OptionParser.new do |opts|
+    opts.banner = <<~BANNER
+      Start an irb console
+
+      Usage: bin/console [options]
+      Usage with mise: mise run console [options]
+    BANNER
+
+    opts.on '-log-level <LEVEL>', String,
+            'Set the log level (defaults to debug. Requires iro-support to be loaded)' do |level|
+      options[:log_level] = level.to_sym
+    end
+
+    opts.on '--no-gems', "Don't load any gems that aren't loaded by default" do
+      options[:gems].clear
+    end
+
+    opts.on '--only <GEM>', String, 'Only load the specified gem (can be specified multiple times)' do |gem|
+      unless gems_cleared
+        options[:gems].clear
+        gems_cleared = true
+      end
+
+      if gems.include?(gem)
+        options[:gems] << gem
+      else
+        warn "Unknown gem: #{gem}"
+      end
+    end
+
+    gems.each do |gem_name|
+      opts.on "--no-#{gem_name}", "Don't load #{gem_name}" do
+        options[:gems].delete(gem_name)
+      end
+    end
+  end.parse!
+
+  if options[:gems].include?('iro-support')
+    require 'iro-support'
+    if Iro.respond_to?(:logger=)
+      require 'logger'
+      Iro.logger = Logger.new(File.join(Dir.pwd, 'logs', 'development.log'))
+      Iro.logger.level = options[:log_level]
+      Iro.logger.formatter = lambda do |severity, datetime, _progname, message|
+        "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} [#{severity}] Iro -- #{message}\n"
+      end
+    end
+  end
+
+  options[:gems].each do |gem_name|
+    require gem_name
+  end
+end
+
+require 'irb'
+IRB.start(__FILE__)

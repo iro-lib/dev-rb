@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+#MISE description="Clean tmp, logs, coverage and doc files"
+#MISE alias="cln"
+# frozen_string_literal: true
+
+require 'fileutils'
+
+Dir.glob('tmp/**/*').reject { |f| File.basename(f) == '.keep' }.each { |f| FileUtils.rm_rf(f) }
+Dir.glob('logs/**/*').reject { |f| File.basename(f) == '.keep' }.each { |f| FileUtils.rm_rf(f) }
+
+artifacts = %w[.yardoc coverage doc]
+
+Dir.glob('**/*.gemspec').each do |gemspec|
+  Dir.chdir(File.dirname(gemspec)) { artifacts.each { |a| FileUtils.rm_rf(a) } }
+end

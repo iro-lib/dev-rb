@@ -1,0 +1,10 @@
+[task_config]
+includes = ["bin"]
+
+[tools]
+ruby = "3.2"
+
+[tasks."lint:ruby"]
+alias = ["lint:rb"]
+description = "Lint ruby files"
+run = "bundle exec rubocop"

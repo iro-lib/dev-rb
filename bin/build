@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+#MISE description="Build all Iro gems"
+# frozen_string_literal: true
+
+require 'fileutils'
+
+# Build all gemspecs
+Dir.glob('**/*.gemspec').each do |gemspec|
+  Dir.chdir(File.dirname(gemspec)) { system "gem build -V #{File.basename(gemspec)}" }
+end
+
+# Ensure pkg directory exists
+FileUtils.mkdir_p('pkg')
+
+# Move built .gem files to pkg/, excluding those already in pkg/
+Dir.glob('**/*.gem').reject { |path| path.start_with?('pkg/') }.each do |gem|
+  FileUtils.mv(gem, "pkg/#{File.basename(gem)}")
+end

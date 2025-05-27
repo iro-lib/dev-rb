@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+#MISE description="Update all Iro gems"
+# frozen_string_literal: true
+
+require 'yaml'
+
+gems = YAML.load_file(File.join(Dir.pwd, 'iro-gems.yml')) || {}
+
+gems.each_value do |config|
+  Dir.chdir(config['path']) do
+    system('bundle update')
+  end
+end
+
+system('bundle update')
