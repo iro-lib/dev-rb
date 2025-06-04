@@ -221,7 +221,7 @@ files['bin/generate/signatures'] = <<~RUBY
           if new_contents.empty?
             File.delete(file)
           else
-            File.write(file, "#{new_contents}\n")
+            File.write(file, "\#{new_contents}\n")
           end
         end
       end
