@@ -24,7 +24,7 @@ module Iro
         alias size length
 
         def push(future)
-          new_entries = @entries.push(future).freeze
+          new_entries = @entries.push(future)
           @entires = new_entries
           resolve(EMPTY_HASH)
         end
@@ -39,7 +39,7 @@ module Iro
 
         private
 
-        def compact!(with_lock: true)
+        def compact!
           new_entries = reject(&:resolved?)
           Iro.logger.debug('runtime') { "removing #{size - new_entries.size} resolved futures" }
           @entries = new_entries

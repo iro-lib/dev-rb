@@ -12,6 +12,14 @@ module Iro
 
           def lazy_load_values
             concurrent_instance_variable_set(:@lazy_load_values, true)
+
+            @mutex.synchronize do
+              define_method(:loaded?) do |key|
+                return false unless exist?(key)
+
+                !@entries.fetch(key, @entries[(@index || EMPTY_HASH)[key]]).is_a?(Proc)
+              end
+            end
           end
 
           def with_index
