@@ -1,0 +1,3 @@
+iro-support:
+  path: ../iro-support-rb
+  repo: git@github.com:iro-lib/iro-support-rb.git

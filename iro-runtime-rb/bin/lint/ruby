@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+#MISE description="Lint ruby code"
+#MISE alias=["lint:rb", "l:rb"]
+
+bundle exec rubocop $@

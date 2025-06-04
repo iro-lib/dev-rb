@@ -1,0 +1,7 @@
+inherit_from:
+  # TODO: change this to a remote url
+  - ../.rubocop.yml
+
+Naming/FileName:
+  Exclude:
+    - lib/iro-runtime.rb

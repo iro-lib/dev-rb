@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+#MISE description="Clean out coverage and doc files"
+#MISE alias="cln"
+
+rm -rf .yardoc
+rm -rf coverage
+rm -rf doc

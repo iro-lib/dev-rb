@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+#MISE description="Build iro-runtime"
+#MISE alias="b"
+
+set -e
+
+gem build -V iro-runtime.gemspec
+mkdir -p pkg
+mv *.gem pkg/
