@@ -12,6 +12,7 @@ module Iro
             plugin.reload
 
             Iro.logger.debug { "replugged plugin #{name}" }
+            Support::Callback.resolve(type: :plugin_reloaded, name:, plugin:)
 
             return plugin
           end
@@ -23,6 +24,7 @@ module Iro
           plugin.setup
 
           Iro.logger.debug { "registered plugin #{name}" }
+          Support::Callback.resolve(type: :plugin_registered, name:, plugin:)
 
           super(name, plugin)
         end

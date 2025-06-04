@@ -7,6 +7,14 @@ PATH
       iro-support (~> 0.1)
 
 PATH
+  remote: iro-chromaticity-rb
+  specs:
+    iro-chromaticity (0.1.0)
+      iro-core (~> 0.1)
+      iro-runtime (~> 0.1)
+      iro-support (~> 0.1)
+
+PATH
   remote: iro-core-rb
   specs:
     iro-core (0.1.0)
@@ -110,6 +118,7 @@ PLATFORMS
 DEPENDENCIES
   github-markup
   iro-chromatic_adaptation-transform!
+  iro-chromaticity!
   iro-core!
   iro-runtime!
   iro-support!

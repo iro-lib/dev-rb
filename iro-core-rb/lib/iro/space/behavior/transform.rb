@@ -62,10 +62,10 @@ module Iro
                 "options: #{options.merge(normalized:)}"
             end
 
-            to_transform = before_transform(space, **conversion_context)
+            to_transform = before_transform(space, **options.except(*conversion_context.keys), **conversion_context)
 
             components = Iro.cache.fetch(:"#{identifier}_to_#{other_identifier}", to_transform, conversion_context) do
-              transform.call(self, **conversion_context)
+              transform.call(self, **options.except(*conversion_context.keys), **conversion_context)
             end
 
             if options.fetch(:as_values, false)

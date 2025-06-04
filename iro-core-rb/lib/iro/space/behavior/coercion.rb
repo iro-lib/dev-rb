@@ -18,7 +18,7 @@ module Iro
                 new(*other)
               end
 
-              coerce_from Space, if: ->(other) { other.respond_to?(:"to_#{identifier}") } do |other|
+              coerce_from if: ->(other) { other.respond_to?(:"to_#{identifier}") } do |other|
                 other.public_send(:"to_#{identifier}")
               end
             end
