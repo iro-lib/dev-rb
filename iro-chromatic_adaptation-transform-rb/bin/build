@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+#MISE description="Build iro-chromatic_adaptation-transform"
+#MISE alias="b"
+
+set -e
+
+gem build -V iro-chromatic_adaptation-transform.gemspec
+mkdir -p pkg
+mv *.gem pkg/

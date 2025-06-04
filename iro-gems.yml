@@ -1,3 +1,6 @@
+iro-chromatic_adaptation-transform:
+  path: iro-chromatic_adaptation-transform-rb
+  repo: git@github.com:iro-lib/iro-chromatic_adaptation-transform-rb.git
 iro-core:
   path: iro-core-rb
   repo: git@github.com:iro-lib/iro-core-rb.git
