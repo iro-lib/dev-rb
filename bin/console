@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 #MISE description="Start an irb console"
-#MISE alias="con"
+#MISE alias="c"
 # frozen_string_literal: true
 
 require 'bundler/setup'
