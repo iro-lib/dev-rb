@@ -1,3 +1,6 @@
+iro-runtime:
+  path: iro-runtime-rb
+  repo: git@github.com:iro-lib/iro-runtime-rb.git
 iro-support:
   path: iro-support-rb
   repo: git@github.com:iro-lib/iro-support-rb.git

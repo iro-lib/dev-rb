@@ -1,4 +1,11 @@
 PATH
+  remote: iro-runtime-rb
+  specs:
+    iro-runtime (0.1.0)
+      iro-support (~> 0.1)
+      zeitwerk (~> 2.7)
+
+PATH
   remote: iro-support-rb
   specs:
     iro-support (0.1.0)
@@ -87,6 +94,7 @@ PLATFORMS
 
 DEPENDENCIES
   github-markup
+  iro-runtime!
   iro-support!
   redcarpet
   rspec

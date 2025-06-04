@@ -8,8 +8,7 @@ module Iro
         include Concurrent::InstanceVariable
 
         def initialize
-          @entries = EMPTY_ARRAY
-          @mutex   = Mutex.new
+          @entries = []
         end
 
         def each(&)
@@ -25,33 +24,26 @@ module Iro
         alias size length
 
         def push(future)
-          new_entries = @entries.dup.push(future).freeze
-          concurrent_instance_variable_set(:entries, new_entries)
+          new_entries = @entries.push(future).freeze
+          @entires = new_entries
           resolve(EMPTY_HASH)
         end
 
-        def resolve(data, with_lock: true)
+        def resolve(data)
           to_process = reject(&:resolved?)
-
           Iro.logger.debug('runtime') { "resolving #{to_process.size} futures with data: #{data}" }
+          to_process.each { |gate| gate.resolve(data) }
 
-          if with_lock
-            @mutex.synchronize { to_process.each { |gate| gate.resolve(data, with_lock:) } }
-          else
-            to_process.each { |gate| gate.resolve(data, with_lock:) }
-          end
-
-          compact!(with_lock:)
+          compact!
         end
 
         private
 
         def compact!(with_lock: true)
-          new_entries = reject(&:resolved?).freeze
-
+          new_entries = reject(&:resolved?)
           Iro.logger.debug('runtime') { "removing #{size - new_entries.size} resolved futures" }
+          @entries = new_entries
 
-          with_lock ? concurrent_instance_variable_set(:entries, new_entries) : @entries = new_entries
           self
         end
       end

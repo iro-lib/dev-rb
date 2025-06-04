@@ -12,8 +12,8 @@ module Iro
           gate
         end
 
-        def resolve(with_lock: true, **data)
-          queue.resolve(data, with_lock:)
+        def resolve(**data)
+          queue.resolve(data)
         end
 
         private
