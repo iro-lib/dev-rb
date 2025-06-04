@@ -18,6 +18,12 @@ module Iro
               registry.register(identifier, &space_class)
             end
           end
+
+          def transform(from, to, &transform_module)
+            enhance_module('Iro::Space') do
+              transform.register(from, to, &transform_module)
+            end
+          end
         end
       end
     end
