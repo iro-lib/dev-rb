@@ -1,3 +1,9 @@
+PATH
+  remote: iro-support-rb
+  specs:
+    iro-support (0.1.0)
+      zeitwerk (~> 2.7)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -73,6 +79,7 @@ GEM
     webrick (1.9.1)
     yard (0.9.37)
     yard-sitemap (1.0.1)
+    zeitwerk (2.7.3)
 
 PLATFORMS
   arm64-darwin-24
@@ -80,6 +87,7 @@ PLATFORMS
 
 DEPENDENCIES
   github-markup
+  iro-support!
   redcarpet
   rspec
   rubocop

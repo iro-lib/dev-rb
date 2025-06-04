@@ -101,6 +101,8 @@ ThreadSafety:
     - bin/**/*
     - '*.gemspec'
     - '**/*.gemspec'
+    - spec/**/*_spec.rb
+    - '**/spec/**/*_spec.rb'
 
 ThreadSafety/ClassInstanceVariable:
   Enabled: false

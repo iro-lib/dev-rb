@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+#MISE description="Lint ruby types with Steep"
+#MISE alias=["l:t"]
+
+bundle exec steep check --severity error

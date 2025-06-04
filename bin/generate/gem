@@ -191,15 +191,22 @@ YAML
 
 files['bin/generate/signatures'] = <<~RUBY
   #!/usr/bin/env ruby
-  #MISE description="Generate and check type signatures"
+  #MISE description="Generate RBS signatures"
   #MISE alias="g:sig"
   # frozen_string_literal: true
+
+  require 'fileutils'
+
+  manifest_path = File.join(Dir.pwd, 'sig/manifest.yaml')
+  manifest = File.read(manifest_path)
+
+  FileUtils.rm_rf(File.join(Dir.pwd, 'sig'))
 
   system 'rbs-inline lib --opt-out --output=./sig'
 
   module SignatureCleaner
     GENERATED_LINE = /^\s*# Generated from .+.rb with RBS::Inline\s*$/
-    RBS_COMMENT    = /^\s*#\s*@rbs.*$/
+    COMMENT_BLOCK = /^([ \t]*)#\s*(?:@rbs|:).*?\n(?:\1#.*\n)*/
 
     class << self
       def clean!
@@ -207,15 +214,14 @@ files['bin/generate/signatures'] = <<~RUBY
           contents = File.read(file)
 
           new_contents = contents
-                         .lines
-                         .reject { |line| GENERATED_LINE.match?(line) || RBS_COMMENT.match?(line) }
-                         .join
+                         .gsub(GENERATED_LINE, '')
+                         .gsub(COMMENT_BLOCK, '')
                          .strip
 
           if new_contents.empty?
             File.delete(file)
           else
-            File.write(file, new_contents + "\n")
+            File.write(file, "#{new_contents}\n")
           end
         end
       end
@@ -223,6 +229,9 @@ files['bin/generate/signatures'] = <<~RUBY
   end
 
   SignatureCleaner.clean!
+
+  File.write(manifest_path, manifest)
+
 RUBY
 
 files['bin/lint/ruby'] = <<~SH

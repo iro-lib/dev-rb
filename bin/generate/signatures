@@ -1,0 +1,14 @@
+#!/usr/bin/env ruby
+#MISE description="Generate signatures for all Iro gems"
+#MISE alias="g:sig"
+# frozen_string_literal: true
+
+require 'yaml'
+
+gems = YAML.load_file(File.join(Dir.pwd, 'iro-gems.yml')) || {}
+
+gems.each_value do |config|
+  Dir.chdir(config['path']) do
+    system('bin/generate/signatures')
+  end
+end
